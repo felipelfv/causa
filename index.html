@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Causa</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    .btn {
+      padding: 8px 16px;
+      border: 1px solid #2c2c2c;
+      background: #fff;
+      font-family: 'Crimson Pro', serif;
+      font-size: 14px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: #2c2c2c;
+      color: #fff;
+    }
+    .btn-active {
+      background: #2c2c2c;
+      color: #fff;
+    }
+    .btn-danger:hover {
+      background: #8b0000;
+      border-color: #8b0000;
+    }
+    .btn-primary {
+      background: #2c2c2c;
+      color: #fff;
+    }
+    .btn-primary:hover {
+      background: #000;
+    }
+    .btn-sm {
+      padding: 4px 10px;
+      font-size: 12px;
+    }
+    .color-swatch {
+      width: 22px;
+      height: 22px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .color-swatch:hover {
+      transform: scale(1.15);
+    }
+    .color-swatch.selected {
+      border-color: #000;
+      box-shadow: 0 0 0 2px #fff, 0 0 0 4px #000;
+    }
+    .prop-section {
+      margin-bottom: 14px;
+    }
+    .prop-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #666;
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useRef } = React;
+
+    const DAGEditor = () => {
+      const [nodes, setNodes] = useState([]);
+      const [edges, setEdges] = useState([]);
+      const [selectedNode, setSelectedNode] = useState(null);
+      const [connectingFrom, setConnectingFrom] = useState(null);
+      const [editingNode, setEditingNode] = useState(null);
+      const [editingEdge, setEditingEdge] = useState(null);
+      const [draggedNode, setDraggedNode] = useState(null);
+      const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
+      const svgRef = useRef(null);
+      const canvasWidth = 700;
+      const canvasHeight = 500;
+
+      // Professional but brighter color palette
+      const colorPalette = [
+        { id: 'black', hex: '#2c2c2c', name: 'Black' },
+        { id: 'blue', hex: '#2563eb', name: 'Blue' },
+        { id: 'teal', hex: '#0d9488', name: 'Teal' },
+        { id: 'green', hex: '#16a34a', name: 'Green' },
+        { id: 'purple', hex: '#7c3aed', name: 'Purple' },
+        { id: 'pink', hex: '#db2777', name: 'Pink' },
+        { id: 'red', hex: '#dc2626', name: 'Red' },
+        { id: 'orange', hex: '#ea580c', name: 'Orange' },
+        { id: 'amber', hex: '#d97706', name: 'Amber' },
+        { id: 'slate', hex: '#64748b', name: 'Slate' },
+      ];
+
+      const lineStyles = [
+        { id: 'solid', name: 'Solid', dasharray: 'none' },
+        { id: 'dashed', name: 'Dashed', dasharray: '8,5' },
+        { id: 'dotted', name: 'Dotted', dasharray: '2,4' },
+      ];
+
+      const nodeShapes = [
+        { id: 'ellipse', name: 'Ellipse' },
+        { id: 'rectangle', name: 'Rectangle' },
+        { id: 'circle', name: 'Circle' },
+      ];
+
+      const handleCanvasClick = (e) => {
+        if (connectingFrom || draggedNode || editingNode || editingEdge) {
+          if (connectingFrom) setConnectingFrom(null);
+          if (editingEdge) setEditingEdge(null);
+          return;
+        }
+        
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        const clickedNode = nodes.find(n => {
+          const dx = n.x - x;
+          const dy = n.y - y;
+          const size = n.size || 1;
+          return Math.sqrt(dx*dx + dy*dy) < 35 * size;
+        });
+        
+        if (clickedNode) {
+          setSelectedNode(clickedNode.id);
+        } else {
+          setSelectedNode(null);
+        }
+      };
+
+      const handleCanvasDoubleClick = (e) => {
+        if (connectingFrom || draggedNode || editingNode || editingEdge) return;
+        
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        
+        const clickedNode = nodes.find(n => {
+          const dx = n.x - x;
+          const dy = n.y - y;
+          const size = n.size || 1;
+          return Math.sqrt(dx*dx + dy*dy) < 35 * size;
+        });
+        
+        if (!clickedNode) {
+          const newNode = {
+            id: `node_${Date.now()}`,
+            x,
+            y,
+            label: `X${nodes.length + 1}`,
+            observed: true,
+            shape: 'ellipse',
+            color: 'black',
+            size: 1
+          };
+          setNodes([...nodes, newNode]);
+          setSelectedNode(newNode.id);
+        }
+      };
+
+      const handleNodeMouseDown = (e, node) => {
+        e.stopPropagation();
+        if (connectingFrom) {
+          if (connectingFrom !== node.id) {
+            const existingEdge = edges.find(
+              ed => ed.from === connectingFrom && ed.to === node.id
+            );
+            if (!existingEdge) {
+              setEdges([...edges, { 
+                id: `edge_${Date.now()}`,
+                from: connectingFrom, 
+                to: node.id,
+                label: '',
+                style: 'solid',
+                color: 'black'
+              }]);
+            }
+          }
+          setConnectingFrom(null);
+        } else {
+          const rect = svgRef.current.getBoundingClientRect();
+          setDraggedNode(node.id);
+          setDragOffset({
+            x: e.clientX - rect.left - node.x,
+            y: e.clientY - rect.top - node.y
+          });
+          setSelectedNode(node.id);
+        }
+      };
+
+      const handleMouseMove = (e) => {
+        if (!draggedNode) return;
+        const rect = svgRef.current.getBoundingClientRect();
+        const x = Math.max(40, Math.min(canvasWidth - 40, e.clientX - rect.left - dragOffset.x));
+        const y = Math.max(40, Math.min(canvasHeight - 40, e.clientY - rect.top - dragOffset.y));
+        
+        setNodes(nodes.map(n => 
+          n.id === draggedNode ? { ...n, x, y } : n
+        ));
+      };
+
+      const handleMouseUp = () => {
+        setDraggedNode(null);
+      };
+
+      const startConnecting = () => {
+        if (selectedNode) {
+          setConnectingFrom(selectedNode);
+        }
+      };
+
+      const deleteSelected = () => {
+        if (selectedNode) {
+          setNodes(nodes.filter(n => n.id !== selectedNode));
+          setEdges(edges.filter(e => e.from !== selectedNode && e.to !== selectedNode));
+          setSelectedNode(null);
+        }
+      };
+
+      const updateNodeProperty = (property, value) => {
+        if (selectedNode) {
+          setNodes(nodes.map(n => 
+            n.id === selectedNode ? { ...n, [property]: value } : n
+          ));
+        }
+      };
+
+      const handleNodeDoubleClick = (e, node) => {
+        e.stopPropagation();
+        setEditingNode(node.id);
+      };
+
+      const handleEdgeClick = (e, edge) => {
+        e.stopPropagation();
+        setEditingEdge(edge.id);
+      };
+
+      const updateNodeLabel = (id, label) => {
+        setNodes(nodes.map(n => n.id === id ? { ...n, label } : n));
+      };
+
+      const updateEdgeProperty = (id, property, value) => {
+        setEdges(edges.map(e => e.id === id ? { ...e, [property]: value } : e));
+      };
+
+      const deleteEdge = (id) => {
+        setEdges(edges.filter(e => e.id !== id));
+        setEditingEdge(null);
+      };
+
+      const getNodeById = (id) => nodes.find(n => n.id === id);
+      const getColorHex = (colorId) => colorPalette.find(c => c.id === colorId)?.hex || '#2c2c2c';
+      const getLineDasharray = (styleId) => lineStyles.find(s => s.id === styleId)?.dasharray || 'none';
+
+      const calculateEdgePath = (edge) => {
+        const fromNode = getNodeById(edge.from);
+        const toNode = getNodeById(edge.to);
+        if (!fromNode || !toNode) return null;
+
+        const dx = toNode.x - fromNode.x;
+        const dy = toNode.y - fromNode.y;
+        const dist = Math.sqrt(dx*dx + dy*dy);
+        if (dist === 0) return null;
+        
+        const unitX = dx / dist;
+        const unitY = dy / dist;
+        
+        const fromSize = fromNode.size || 1;
+        const toSize = toNode.size || 1;
+        
+        const getOffset = (node, isStart) => {
+          const size = node.size || 1;
+          const dir = isStart ? 1 : -1;
+          if (node.shape === 'circle') return 26 * size;
+          if (node.shape === 'rectangle') {
+            const angle = Math.atan2(dy * dir, dx * dir);
+            const w = 32 * size, h = 24 * size;
+            return Math.min(Math.abs(w / Math.cos(angle)), Math.abs(h / Math.sin(angle))) || 30 * size;
+          }
+          return isStart ? 32 * size : 38 * size;
+        };
+
+        const startOffset = getOffset(fromNode, true);
+        const endOffset = getOffset(toNode, false) + 6;
+        
+        const startX = fromNode.x + unitX * startOffset;
+        const startY = fromNode.y + unitY * (fromNode.shape === 'ellipse' ? startOffset * 0.75 : startOffset);
+        const endX = toNode.x - unitX * endOffset;
+        const endY = toNode.y - unitY * (toNode.shape === 'ellipse' ? endOffset * 0.7 : endOffset);
+
+        return { startX, startY, endX, endY, midX: (startX + endX) / 2, midY: (startY + endY) / 2 };
+      };
+
+      const renderNode = (node) => {
+        const colorHex = getColorHex(node.color);
+        const isSelected = selectedNode === node.id;
+        const strokeWidth = isSelected ? 2.5 : 1.5;
+        const strokeDasharray = node.observed ? 'none' : '6,3';
+        const size = node.size || 1;
+
+        const commonProps = {
+          fill: '#fff',
+          stroke: colorHex,
+          strokeWidth,
+          strokeDasharray
+        };
+
+        switch (node.shape) {
+          case 'rectangle':
+            return (
+              <rect
+                x={node.x - 32 * size}
+                y={node.y - 22 * size}
+                width={64 * size}
+                height={44 * size}
+                rx={3}
+                {...commonProps}
+              />
+            );
+          case 'circle':
+            return (
+              <circle
+                cx={node.x}
+                cy={node.y}
+                r={24 * size}
+                {...commonProps}
+              />
+            );
+          default:
+            return (
+              <ellipse
+                cx={node.x}
+                cy={node.y}
+                rx={32 * size}
+                ry={22 * size}
+                {...commonProps}
+              />
+            );
+        }
+      };
+
+      const getCleanSvgElement = () => {
+        if (!svgRef.current) return null;
+        const svgClone = svgRef.current.cloneNode(true);
+        svgClone.querySelectorAll('foreignObject').forEach(el => el.remove());
+        svgClone.querySelectorAll('line[stroke="#f0f0f0"]').forEach(el => el.remove());
+        return svgClone;
+      };
+
+      const downloadPng = (scale = 2) => {
+        const svgElement = getCleanSvgElement();
+        if (!svgElement) return;
+        
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = canvasWidth * scale;
+        canvas.height = canvasHeight * scale;
+        
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        const svgData = new XMLSerializer().serializeToString(svgElement);
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+        const url = URL.createObjectURL(svgBlob);
+        
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          URL.revokeObjectURL(url);
+          
+          canvas.toBlob((blob) => {
+            const pngUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = pngUrl;
+            a.download = 'causa_diagram.png';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(pngUrl);
+          }, 'image/png');
+        };
+        img.src = url;
+      };
+
+      const clearAll = () => {
+        setNodes([]);
+        setEdges([]);
+        setSelectedNode(null);
+        setConnectingFrom(null);
+        setEditingNode(null);
+        setEditingEdge(null);
+      };
+
+      const selectedNodeData = selectedNode ? getNodeById(selectedNode) : null;
+
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: '#f8f7f4',
+          fontFamily: "'Crimson Pro', 'Times New Roman', serif",
+          padding: '24px'
+        }}>
+          <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
+            <header style={{ marginBottom: '24px', borderBottom: '2px solid #2c2c2c', paddingBottom: '16px' }}>
+              <h1 style={{ 
+                fontSize: '28px', 
+                fontWeight: 600, 
+                margin: 0,
+                letterSpacing: '-0.5px'
+              }}>
+                Causa
+              </h1>
+            </header>
+
+            <div style={{ display: 'flex', gap: '24px' }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #2c2c2c',
+                  boxShadow: '4px 4px 0 #2c2c2c'
+                }}>
+                  <svg
+                    ref={svgRef}
+                    width={canvasWidth}
+                    height={canvasHeight}
+                    onClick={handleCanvasClick}
+                    onDoubleClick={handleCanvasDoubleClick}
+                    onMouseMove={handleMouseMove}
+                    onMouseUp={handleMouseUp}
+                    onMouseLeave={handleMouseUp}
+                    style={{ 
+                      cursor: connectingFrom ? 'crosshair' : 'default',
+                      display: 'block'
+                    }}
+                  >
+                    <defs>
+                      {colorPalette.map(color => (
+                        <marker
+                          key={color.id}
+                          id={`arrowhead-${color.id}`}
+                          markerWidth="10"
+                          markerHeight="7"
+                          refX="9"
+                          refY="3.5"
+                          orient="auto"
+                        >
+                          <polygon points="0 0, 10 3.5, 0 7" fill={color.hex} />
+                        </marker>
+                      ))}
+                    </defs>
+
+                    <rect width={canvasWidth} height={canvasHeight} fill="#fff" />
+                    
+                    {[...Array(Math.floor(canvasWidth / 50))].map((_, i) => (
+                      <line key={`v${i}`} x1={(i+1)*50} y1={0} x2={(i+1)*50} y2={canvasHeight} stroke="#f0f0f0" strokeWidth={1} />
+                    ))}
+                    {[...Array(Math.floor(canvasHeight / 50))].map((_, i) => (
+                      <line key={`h${i}`} x1={0} y1={(i+1)*50} x2={canvasWidth} y2={(i+1)*50} stroke="#f0f0f0" strokeWidth={1} />
+                    ))}
+
+                    {edges.map(edge => {
+                      const path = calculateEdgePath(edge);
+                      if (!path) return null;
+                      const colorHex = getColorHex(edge.color);
+                      return (
+                        <g key={edge.id} onClick={(e) => handleEdgeClick(e, edge)} style={{ cursor: 'pointer' }}>
+                          <line
+                            x1={path.startX}
+                            y1={path.startY}
+                            x2={path.endX}
+                            y2={path.endY}
+                            stroke={colorHex}
+                            strokeWidth={1.5}
+                            strokeDasharray={getLineDasharray(edge.style)}
+                            markerEnd={`url(#arrowhead-${edge.color})`}
+                          />
+                          {edge.label && (
+                            <text
+                              x={path.midX}
+                              y={path.midY - 8}
+                              textAnchor="middle"
+                              fontSize="13"
+                              fontFamily="'Crimson Pro', serif"
+                              fontStyle="italic"
+                              fill={colorHex}
+                            >
+                              {edge.label}
+                            </text>
+                          )}
+                          {editingEdge === edge.id && (
+                            <foreignObject x={path.midX - 100} y={path.midY - 50} width={200} height={140}>
+                              <div style={{ 
+                                background: '#fff', 
+                                border: '1px solid #2c2c2c', 
+                                padding: '10px',
+                                boxShadow: '3px 3px 0 #2c2c2c'
+                              }}>
+                                <div className="prop-section">
+                                  <div className="prop-label">Label</div>
+                                  <input
+                                    type="text"
+                                    value={edge.label}
+                                    onChange={(e) => updateEdgeProperty(edge.id, 'label', e.target.value)}
+                                    placeholder="β₁"
+                                    autoFocus
+                                    onClick={(e) => e.stopPropagation()}
+                                    style={{
+                                      width: '100%',
+                                      padding: '5px',
+                                      border: '1px solid #ccc',
+                                      fontFamily: "'Crimson Pro', serif",
+                                      fontSize: '13px',
+                                      boxSizing: 'border-box'
+                                    }}
+                                    onKeyDown={(e) => e.key === 'Enter' && setEditingEdge(null)}
+                                  />
+                                </div>
+                                <div className="prop-section">
+                                  <div className="prop-label">Line Style</div>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    {lineStyles.map(style => (
+                                      <button
+                                        key={style.id}
+                                        className={`btn btn-sm ${edge.style === style.id ? 'btn-active' : ''}`}
+                                        onClick={(e) => { e.stopPropagation(); updateEdgeProperty(edge.id, 'style', style.id); }}
+                                      >
+                                        {style.name}
+                                      </button>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div className="prop-section">
+                                  <div className="prop-label">Color</div>
+                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                                    {colorPalette.map(color => (
+                                      <div
+                                        key={color.id}
+                                        className={`color-swatch ${edge.color === color.id ? 'selected' : ''}`}
+                                        style={{ background: color.hex }}
+                                        onClick={(e) => { e.stopPropagation(); updateEdgeProperty(edge.id, 'color', color.id); }}
+                                        title={color.name}
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+                                <button 
+                                  className="btn btn-sm btn-danger" 
+                                  style={{ width: '100%', marginTop: '6px' }}
+                                  onClick={(e) => { e.stopPropagation(); deleteEdge(edge.id); }}
+                                >
+                                  Delete Edge
+                                </button>
+                              </div>
+                            </foreignObject>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {nodes.map(node => {
+                      const colorHex = getColorHex(node.color);
+                      const size = node.size || 1;
+                      const fontSize = Math.round(15 * size);
+                      return (
+                        <g 
+                          key={node.id}
+                          onMouseDown={(e) => handleNodeMouseDown(e, node)}
+                          onDoubleClick={(e) => handleNodeDoubleClick(e, node)}
+                          style={{ cursor: draggedNode === node.id ? 'grabbing' : 'grab' }}
+                        >
+                          {renderNode(node)}
+                          {editingNode === node.id ? (
+                            <foreignObject x={node.x - 35 * size} y={node.y - 12 * size} width={70 * size} height={24 * size}>
+                              <input
+                                type="text"
+                                value={node.label}
+                                onChange={(e) => updateNodeLabel(node.id, e.target.value)}
+                                autoFocus
+                                onClick={(e) => e.stopPropagation()}
+                                onBlur={() => setEditingNode(null)}
+                                onKeyDown={(e) => e.key === 'Enter' && setEditingNode(null)}
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  textAlign: 'center',
+                                  border: 'none',
+                                  background: 'transparent',
+                                  fontFamily: "'Crimson Pro', serif",
+                                  fontStyle: 'italic',
+                                  fontSize: `${fontSize}px`,
+                                  color: colorHex
+                                }}
+                              />
+                            </foreignObject>
+                          ) : (
+                            <text
+                              x={node.x}
+                              y={node.y + 5 * size}
+                              textAnchor="middle"
+                              fontSize={fontSize}
+                              fontFamily="'Crimson Pro', serif"
+                              fontStyle="italic"
+                              fill={colorHex}
+                            >
+                              {node.label}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {connectingFrom && (
+                      <text x={canvasWidth/2} y={30} textAnchor="middle" fontSize="14" fill="#666" fontFamily="'Crimson Pro', serif">
+                        Click a node to connect, or click elsewhere to cancel
+                      </text>
+                    )}
+                  </svg>
+                </div>
+
+                <div style={{ 
+                  marginTop: '16px', 
+                  display: 'flex', 
+                  gap: '8px', 
+                  flexWrap: 'wrap',
+                  alignItems: 'center'
+                }}>
+                  <button 
+                    className={`btn ${connectingFrom ? 'btn-active' : ''}`}
+                    onClick={startConnecting}
+                    disabled={!selectedNode}
+                    style={{ opacity: selectedNode ? 1 : 0.5 }}
+                  >
+                    Draw Edge →
+                  </button>
+                  <button 
+                    className="btn btn-danger"
+                    onClick={deleteSelected}
+                    disabled={!selectedNode}
+                    style={{ opacity: selectedNode ? 1 : 0.5 }}
+                  >
+                    Delete Node
+                  </button>
+                  <div style={{ flex: 1 }} />
+                  <button className="btn" onClick={clearAll}>Clear All</button>
+                </div>
+              </div>
+
+              <div style={{ width: '340px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #2c2c2c',
+                  boxShadow: '4px 4px 0 #2c2c2c',
+                  padding: '16px'
+                }}>
+                  <h3 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 600, borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+                    Node Properties
+                    {selectedNodeData && <span style={{ fontWeight: 400, color: '#666' }}> — {selectedNodeData.label}</span>}
+                  </h3>
+                  
+                  {selectedNodeData ? (
+                    <>
+                      <div className="prop-section">
+                        <div className="prop-label">Shape</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {nodeShapes.map(shape => (
+                            <button
+                              key={shape.id}
+                              className={`btn btn-sm ${selectedNodeData.shape === shape.id ? 'btn-active' : ''}`}
+                              onClick={() => updateNodeProperty('shape', shape.id)}
+                            >
+                              {shape.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Size: {((selectedNodeData.size || 1) * 100).toFixed(0)}%</div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <input
+                            type="range"
+                            min="0.6"
+                            max="2"
+                            step="0.1"
+                            value={selectedNodeData.size || 1}
+                            onChange={(e) => updateNodeProperty('size', parseFloat(e.target.value))}
+                            style={{ flex: 1, cursor: 'pointer' }}
+                          />
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => updateNodeProperty('size', Math.max(0.6, (selectedNodeData.size || 1) - 0.1))}
+                              style={{ padding: '2px 8px' }}
+                            >
+                              −
+                            </button>
+                            <button
+                              className="btn btn-sm"
+                              onClick={() => updateNodeProperty('size', Math.min(2, (selectedNodeData.size || 1) + 0.1))}
+                              style={{ padding: '2px 8px' }}
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Variable Type</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button
+                            className={`btn btn-sm ${selectedNodeData.observed ? 'btn-active' : ''}`}
+                            onClick={() => updateNodeProperty('observed', true)}
+                          >
+                            Observed
+                          </button>
+                          <button
+                            className={`btn btn-sm ${!selectedNodeData.observed ? 'btn-active' : ''}`}
+                            onClick={() => updateNodeProperty('observed', false)}
+                          >
+                            Latent
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Color</div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {colorPalette.map(color => (
+                            <div
+                              key={color.id}
+                              className={`color-swatch ${selectedNodeData.color === color.id ? 'selected' : ''}`}
+                              style={{ background: color.hex }}
+                              onClick={() => updateNodeProperty('color', color.id)}
+                              title={color.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : (
+                    <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>
+                      Select a node to edit its properties
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #2c2c2c',
+                  boxShadow: '4px 4px 0 #2c2c2c',
+                  padding: '16px'
+                }}>
+                  <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 600 }}>Export</h3>
+                  
+                  <div className="prop-section">
+                    <div className="prop-label">Download as PNG</div>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button className="btn" onClick={() => downloadPng(2)} style={{ flex: 1 }}>
+                        Standard
+                      </button>
+                      <button className="btn" onClick={() => downloadPng(4)} style={{ flex: 1 }}>
+                        High-Res
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #2c2c2c',
+                  boxShadow: '4px 4px 0 #2c2c2c',
+                  padding: '16px',
+                  fontSize: '13px'
+                }}>
+                  <h3 style={{ margin: '0 0 10px', fontSize: '15px', fontWeight: 600 }}>Quick Guide</h3>
+                  <ul style={{ margin: 0, paddingLeft: '18px', lineHeight: 1.6 }}>
+                    <li>Double-click canvas to add nodes</li>
+                    <li>Drag nodes to reposition</li>
+                    <li>Select node → "Draw Edge" → click target</li>
+                    <li>Double-click node to edit label</li>
+                    <li>Click edges to edit style/color</li>
+                  </ul>
+                  <div style={{ marginTop: '12px', padding: '8px', background: '#f8f7f4', fontSize: '12px' }}>
+                    <strong>Stats:</strong> {nodes.length} nodes, {edges.length} edges
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer style={{ 
+              marginTop: '24px', 
+              paddingTop: '16px', 
+              borderTop: '1px solid #ddd',
+              fontSize: '13px',
+              color: '#888'
+            }}>
+              Causa — Create publication-ready causal diagrams
+            </footer>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<DAGEditor />);
+  </script>
+</body>
+</html>
