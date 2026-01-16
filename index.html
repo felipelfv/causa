@@ -81,7 +81,7 @@
       const [selectedNode, setSelectedNode] = useState(null);
       const [connectingFrom, setConnectingFrom] = useState(null);
       const [editingNode, setEditingNode] = useState(null);
-      const [editingEdge, setEditingEdge] = useState(null);
+      const [selectedEdge, setSelectedEdge] = useState(null);
       const [draggedNode, setDraggedNode] = useState(null);
       const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
       const svgRef = useRef(null);
@@ -114,9 +114,8 @@
       ];
 
       const handleCanvasClick = (e) => {
-        if (connectingFrom || draggedNode || editingNode || editingEdge) {
+        if (connectingFrom || draggedNode || editingNode) {
           if (connectingFrom) setConnectingFrom(null);
-          if (editingEdge) setEditingEdge(null);
           return;
         }
         
@@ -133,13 +132,15 @@
         
         if (clickedNode) {
           setSelectedNode(clickedNode.id);
+          setSelectedEdge(null);
         } else {
           setSelectedNode(null);
+          setSelectedEdge(null);
         }
       };
 
       const handleCanvasDoubleClick = (e) => {
-        if (connectingFrom || draggedNode || editingNode || editingEdge) return;
+        if (connectingFrom || draggedNode || editingNode) return;
         
         const rect = e.currentTarget.getBoundingClientRect();
         const x = e.clientX - rect.left;
@@ -182,7 +183,8 @@
                 to: node.id,
                 label: '',
                 style: 'solid',
-                color: 'black'
+                color: 'black',
+                labelPosition: 0.5
               }]);
             }
           }
@@ -242,7 +244,8 @@
 
       const handleEdgeClick = (e, edge) => {
         e.stopPropagation();
-        setEditingEdge(edge.id);
+        setSelectedEdge(edge.id);
+        setSelectedNode(null);
       };
 
       const updateNodeLabel = (id, label) => {
@@ -255,10 +258,11 @@
 
       const deleteEdge = (id) => {
         setEdges(edges.filter(e => e.id !== id));
-        setEditingEdge(null);
+        setSelectedEdge(null);
       };
 
       const getNodeById = (id) => nodes.find(n => n.id === id);
+      const getEdgeById = (id) => edges.find(e => e.id === id);
       const getColorHex = (colorId) => colorPalette.find(c => c.id === colorId)?.hex || '#2c2c2c';
       const getLineDasharray = (styleId) => lineStyles.find(s => s.id === styleId)?.dasharray || 'none';
 
@@ -323,6 +327,7 @@
                 y={node.y - 22 * size}
                 width={64 * size}
                 height={44 * size}
+                rx={3}
                 {...commonProps}
               />
             );
@@ -395,12 +400,13 @@
         setNodes([]);
         setEdges([]);
         setSelectedNode(null);
+        setSelectedEdge(null);
         setConnectingFrom(null);
         setEditingNode(null);
-        setEditingEdge(null);
       };
 
       const selectedNodeData = selectedNode ? getNodeById(selectedNode) : null;
+      const selectedEdgeData = selectedEdge ? getEdgeById(selectedEdge) : null;
 
       return (
         <div style={{
@@ -471,6 +477,10 @@
                       const path = calculateEdgePath(edge);
                       if (!path) return null;
                       const colorHex = getColorHex(edge.color);
+                      const isSelected = selectedEdge === edge.id;
+                      const pos = edge.labelPosition || 0.5;
+                      const labelX = path.startX + (path.endX - path.startX) * pos;
+                      const labelY = path.startY + (path.endY - path.startY) * pos - 8;
                       return (
                         <g key={edge.id} onClick={(e) => handleEdgeClick(e, edge)} style={{ cursor: 'pointer' }}>
                           <line
@@ -479,14 +489,14 @@
                             x2={path.endX}
                             y2={path.endY}
                             stroke={colorHex}
-                            strokeWidth={1.5}
+                            strokeWidth={isSelected ? 2.5 : 1.5}
                             strokeDasharray={getLineDasharray(edge.style)}
                             markerEnd={`url(#arrowhead-${edge.color})`}
                           />
                           {edge.label && (
                             <text
-                              x={path.midX}
-                              y={path.midY - 8}
+                              x={labelX}
+                              y={labelY}
                               textAnchor="middle"
                               fontSize="13"
                               fontFamily="'Crimson Pro', serif"
@@ -495,72 +505,6 @@
                             >
                               {edge.label}
                             </text>
-                          )}
-                          {editingEdge === edge.id && (
-                            <foreignObject x={path.midX - 100} y={path.midY - 50} width={200} height={140}>
-                              <div style={{ 
-                                background: '#fff', 
-                                border: '1px solid #2c2c2c', 
-                                padding: '10px',
-                                boxShadow: '3px 3px 0 #2c2c2c'
-                              }}>
-                                <div className="prop-section">
-                                  <div className="prop-label">Label</div>
-                                  <input
-                                    type="text"
-                                    value={edge.label}
-                                    onChange={(e) => updateEdgeProperty(edge.id, 'label', e.target.value)}
-                                    placeholder="β₁"
-                                    autoFocus
-                                    onClick={(e) => e.stopPropagation()}
-                                    style={{
-                                      width: '100%',
-                                      padding: '5px',
-                                      border: '1px solid #ccc',
-                                      fontFamily: "'Crimson Pro', serif",
-                                      fontSize: '13px',
-                                      boxSizing: 'border-box'
-                                    }}
-                                    onKeyDown={(e) => e.key === 'Enter' && setEditingEdge(null)}
-                                  />
-                                </div>
-                                <div className="prop-section">
-                                  <div className="prop-label">Line Style</div>
-                                  <div style={{ display: 'flex', gap: '4px' }}>
-                                    {lineStyles.map(style => (
-                                      <button
-                                        key={style.id}
-                                        className={`btn btn-sm ${edge.style === style.id ? 'btn-active' : ''}`}
-                                        onClick={(e) => { e.stopPropagation(); updateEdgeProperty(edge.id, 'style', style.id); }}
-                                      >
-                                        {style.name}
-                                      </button>
-                                    ))}
-                                  </div>
-                                </div>
-                                <div className="prop-section">
-                                  <div className="prop-label">Color</div>
-                                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                                    {colorPalette.map(color => (
-                                      <div
-                                        key={color.id}
-                                        className={`color-swatch ${edge.color === color.id ? 'selected' : ''}`}
-                                        style={{ background: color.hex }}
-                                        onClick={(e) => { e.stopPropagation(); updateEdgeProperty(edge.id, 'color', color.id); }}
-                                        title={color.name}
-                                      />
-                                    ))}
-                                  </div>
-                                </div>
-                                <button 
-                                  className="btn btn-sm btn-danger" 
-                                  style={{ width: '100%', marginTop: '6px' }}
-                                  onClick={(e) => { e.stopPropagation(); deleteEdge(edge.id); }}
-                                >
-                                  Delete Edge
-                                </button>
-                              </div>
-                            </foreignObject>
                           )}
                         </g>
                       );
@@ -604,7 +548,7 @@
                           ) : (
                             <text
                               x={node.x}
-                              y={node.y + 5}
+                              y={node.y + 5 * size}
                               textAnchor="middle"
                               fontSize={fontSize}
                               fontFamily="'Crimson Pro', serif"
@@ -761,6 +705,107 @@
                   boxShadow: '4px 4px 0 #2c2c2c',
                   padding: '16px'
                 }}>
+                  <h3 style={{ margin: '0 0 14px', fontSize: '15px', fontWeight: 600, borderBottom: '1px solid #eee', paddingBottom: '8px' }}>
+                    Edge Properties
+                    {selectedEdgeData && <span style={{ fontWeight: 400, color: '#666' }}> — {getNodeById(selectedEdgeData.from)?.label} → {getNodeById(selectedEdgeData.to)?.label}</span>}
+                  </h3>
+                  
+                  {selectedEdgeData ? (
+                    <>
+                      <div className="prop-section">
+                        <div className="prop-label">Label</div>
+                        <input
+                          type="text"
+                          value={selectedEdgeData.label}
+                          onChange={(e) => updateEdgeProperty(selectedEdgeData.id, 'label', e.target.value)}
+                          placeholder="β₁"
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            border: '1px solid #ccc',
+                            fontFamily: "'Crimson Pro', serif",
+                            fontSize: '14px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '3px', marginTop: '6px', flexWrap: 'wrap' }}>
+                          {['α', 'β', 'γ', 'δ', 'ε', 'θ', 'λ', 'μ', 'ρ', 'σ', 'τ', 'φ', '₁', '₂', '₃'].map(char => (
+                            <button
+                              key={char}
+                              className="btn btn-sm"
+                              style={{ padding: '2px 6px', fontSize: '12px', minWidth: '24px' }}
+                              onClick={() => updateEdgeProperty(selectedEdgeData.id, 'label', selectedEdgeData.label + char)}
+                            >
+                              {char}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Label Position</div>
+                        <input
+                          type="range"
+                          min="0.1"
+                          max="0.9"
+                          step="0.05"
+                          value={selectedEdgeData.labelPosition || 0.5}
+                          onChange={(e) => updateEdgeProperty(selectedEdgeData.id, 'labelPosition', parseFloat(e.target.value))}
+                          style={{ width: '100%', cursor: 'pointer' }}
+                        />
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Line Style</div>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          {lineStyles.map(style => (
+                            <button
+                              key={style.id}
+                              className={`btn btn-sm ${selectedEdgeData.style === style.id ? 'btn-active' : ''}`}
+                              onClick={() => updateEdgeProperty(selectedEdgeData.id, 'style', style.id)}
+                            >
+                              {style.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="prop-section">
+                        <div className="prop-label">Color</div>
+                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                          {colorPalette.map(color => (
+                            <div
+                              key={color.id}
+                              className={`color-swatch ${selectedEdgeData.color === color.id ? 'selected' : ''}`}
+                              style={{ background: color.hex }}
+                              onClick={() => updateEdgeProperty(selectedEdgeData.id, 'color', color.id)}
+                              title={color.name}
+                            />
+                          ))}
+                        </div>
+                      </div>
+
+                      <button 
+                        className="btn btn-sm btn-danger" 
+                        style={{ width: '100%' }}
+                        onClick={() => deleteEdge(selectedEdgeData.id)}
+                      >
+                        Delete Edge
+                      </button>
+                    </>
+                  ) : (
+                    <p style={{ color: '#999', fontSize: '13px', margin: 0 }}>
+                      Click an edge to edit its properties
+                    </p>
+                  )}
+                </div>
+
+                <div style={{ 
+                  background: '#fff', 
+                  border: '1px solid #2c2c2c',
+                  boxShadow: '4px 4px 0 #2c2c2c',
+                  padding: '16px'
+                }}>
                   <h3 style={{ margin: '0 0 12px', fontSize: '15px', fontWeight: 600 }}>Export</h3>
                   
                   <div className="prop-section">
@@ -816,4 +861,3 @@
   </script>
 </body>
 </html>
-
