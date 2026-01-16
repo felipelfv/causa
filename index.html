@@ -88,6 +88,7 @@
       const canvasWidth = 700;
       const canvasHeight = 500;
 
+      // Professional but brighter color palette
       const colorPalette = [
         { id: 'black', hex: '#2c2c2c', name: 'Black' },
         { id: 'blue', hex: '#2563eb', name: 'Blue' },
@@ -323,7 +324,6 @@
                 y={node.y - 22 * size}
                 width={64 * size}
                 height={44 * size}
-                rx={3}
                 {...commonProps}
               />
             );
@@ -570,7 +570,7 @@
                     {nodes.map(node => {
                       const colorHex = getColorHex(node.color);
                       const size = node.size || 1;
-                      const fontSize = Math.round(15 * size);
+                      const fontSize = 15;
                       return (
                         <g 
                           key={node.id}
@@ -605,7 +605,7 @@
                           ) : (
                             <text
                               x={node.x}
-                              y={node.y + 5 * size}
+                              y={node.y + 5}
                               textAnchor="middle"
                               fontSize={fontSize}
                               fontFamily="'Crimson Pro', serif"
@@ -771,7 +771,7 @@
                         Standard
                       </button>
                       <button className="btn" onClick={() => downloadPng(4)} style={{ flex: 1 }}>
-                        High-Resolution
+                        High-Res
                       </button>
                     </div>
                   </div>
