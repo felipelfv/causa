@@ -88,6 +88,7 @@
       const canvasWidth = 700;
       const canvasHeight = 500;
 
+      // Professional but brighter color palette
       const colorPalette = [
         { id: 'black', hex: '#2c2c2c', name: 'Black' },
         { id: 'blue', hex: '#2563eb', name: 'Blue' },
@@ -184,7 +185,8 @@
                 label: '',
                 style: 'solid',
                 color: 'black',
-                labelPosition: 0.5
+                labelPosition: 0.5,
+                labelOffset: 8
               }]);
             }
           }
@@ -479,8 +481,15 @@
                       const colorHex = getColorHex(edge.color);
                       const isSelected = selectedEdge === edge.id;
                       const pos = edge.labelPosition || 0.5;
+                      const offset = edge.labelOffset || 8;
                       const labelX = path.startX + (path.endX - path.startX) * pos;
-                      const labelY = path.startY + (path.endY - path.startY) * pos - 8;
+                      const labelY = path.startY + (path.endY - path.startY) * pos;
+                      // Calculate perpendicular offset
+                      const dx = path.endX - path.startX;
+                      const dy = path.endY - path.startY;
+                      const len = Math.sqrt(dx*dx + dy*dy);
+                      const perpX = len > 0 ? -dy / len * offset : 0;
+                      const perpY = len > 0 ? dx / len * offset : -offset;
                       return (
                         <g key={edge.id} onClick={(e) => handleEdgeClick(e, edge)} style={{ cursor: 'pointer' }}>
                           <line
@@ -495,8 +504,8 @@
                           />
                           {edge.label && (
                             <text
-                              x={labelX}
-                              y={labelY}
+                              x={labelX + perpX}
+                              y={labelY + perpY}
                               textAnchor="middle"
                               fontSize="13"
                               fontFamily="'Crimson Pro', serif"
@@ -613,6 +622,35 @@
                   
                   {selectedNodeData ? (
                     <>
+                      <div className="prop-section">
+                        <div className="prop-label">Label</div>
+                        <input
+                          type="text"
+                          value={selectedNodeData.label}
+                          onChange={(e) => updateNodeProperty('label', e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '6px',
+                            border: '1px solid #ccc',
+                            fontFamily: "'Crimson Pro', serif",
+                            fontSize: '14px',
+                            boxSizing: 'border-box'
+                          }}
+                        />
+                        <div style={{ display: 'flex', gap: '3px', marginTop: '6px', flexWrap: 'wrap' }}>
+                          {['α', 'β', 'γ', 'δ', 'ε', 'θ', 'λ', 'μ', 'ρ', 'σ', 'τ', 'φ', '₁', '₂', '₃'].map(char => (
+                            <button
+                              key={char}
+                              className="btn btn-sm"
+                              style={{ padding: '2px 6px', fontSize: '12px', minWidth: '24px' }}
+                              onClick={() => updateNodeProperty('label', selectedNodeData.label + char)}
+                            >
+                              {char}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
                       <div className="prop-section">
                         <div className="prop-label">Shape</div>
                         <div style={{ display: 'flex', gap: '6px' }}>
@@ -756,6 +794,19 @@
                       </div>
 
                       <div className="prop-section">
+                        <div className="prop-label">Label Distance</div>
+                        <input
+                          type="range"
+                          min="-30"
+                          max="30"
+                          step="1"
+                          value={selectedEdgeData.labelOffset || 8}
+                          onChange={(e) => updateEdgeProperty(selectedEdgeData.id, 'labelOffset', parseFloat(e.target.value))}
+                          style={{ width: '100%', cursor: 'pointer' }}
+                        />
+                      </div>
+
+                      <div className="prop-section">
                         <div className="prop-label">Line Style</div>
                         <div style={{ display: 'flex', gap: '6px' }}>
                           {lineStyles.map(style => (
@@ -815,7 +866,7 @@
                         Standard
                       </button>
                       <button className="btn" onClick={() => downloadPng(4)} style={{ flex: 1 }}>
-                        High-Resolution
+                        High-Res
                       </button>
                     </div>
                   </div>
